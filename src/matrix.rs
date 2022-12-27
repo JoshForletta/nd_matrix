@@ -19,29 +19,53 @@ pub fn dimension_offsets<const D: usize>(dimensions: &[usize; D]) -> [usize; D] 
     dimension_offsets
 }
 
-pub fn point_to_index<const D: usize>(point: Point<D>, dimension_offsets: &[usize; D]) -> usize {
-    zip(point[1..D].into_iter(), dimension_offsets.into_iter())
-        .map(|(coordinate, dimension_offset)| coordinate * dimension_offset)
-        .sum::<usize>()
-        + point[0]
+pub trait ToIndex<const D: usize> {
+    fn to_index(&self, dimension_offsets: &[usize; D]) -> usize;
 }
 
-pub fn index_to_point<const D: usize>(
-    mut index: usize,
-    dimension_offsets: &[usize; D],
-) -> Point<D> {
-    let mut point = Point::from([0; D]);
-
-    for (coordinate, dimension_offset) in
-        zip(point[1..D].iter_mut(), dimension_offsets.iter()).rev()
-    {
-        *coordinate = index / dimension_offset;
-        index = index % dimension_offset;
+impl<const D: usize> ToIndex<D> for Point<D> {
+    fn to_index(&self, dimension_offsets: &[usize; D]) -> usize {
+        zip(self[1..D].into_iter(), dimension_offsets.into_iter())
+            .map(|(coordinate, dimension_offset)| coordinate * dimension_offset)
+            .sum::<usize>()
+            + self[0]
     }
+}
 
-    point[0] = index;
+impl<const D: usize> ToIndex<D> for usize {
+    #[inline(always)]
+    fn to_index(&self, _dimension_offsets: &[usize; D]) -> usize {
+        *self
+    }
+}
 
-    point
+pub trait ToPoint<const D: usize> {
+    fn to_point(&self, dimension_offsets: &[usize; D]) -> Point<D>;
+}
+
+impl<const D: usize> ToPoint<D> for Point<D> {
+    #[inline(always)]
+    fn to_point(&self, _dimension_offsets: &[usize; D]) -> Point<D> {
+        *self
+    }
+}
+
+impl<const D: usize> ToPoint<D> for usize {
+    fn to_point(&self, dimension_offsets: &[usize; D]) -> Point<D> {
+        let mut index = self.clone();
+        let mut point = Point::from([0; D]);
+
+        for (coordinate, dimension_offset) in
+            zip(point[1..D].iter_mut(), dimension_offsets.iter()).rev()
+        {
+            *coordinate = index / dimension_offset;
+            index = index % dimension_offset;
+        }
+
+        point[0] = index;
+
+        point
+    }
 }
 
 #[derive(Debug)]
@@ -53,7 +77,7 @@ pub struct Matrix<T, const D: usize> {
 
 impl<T, const D: usize> Matrix<T, D>
 where
-    T: Copy,
+    T: Clone,
 {
     pub fn fill(dimensions: [usize; D], cell: T) -> Self {
         let capacity = dimensions.iter().product();
@@ -98,53 +122,42 @@ impl<T, const D: usize> Matrix<T, D> {
     }
 
     #[inline(always)]
-    pub fn get(&self, point: Point<D>) -> Option<&T> {
-        self.matrix
-            .get(point_to_index(point, &self.dimension_offsets))
+    pub fn get<I>(&self, index: I) -> Option<&T>
+    where
+        I: ToIndex<D>,
+    {
+        self.matrix.get(index.to_index(&self.dimension_offsets))
     }
 
     #[inline(always)]
-    pub fn get_mut(&mut self, point: Point<D>) -> Option<&mut T> {
-        self.matrix
-            .get_mut(point_to_index(point, &self.dimension_offsets))
-    }
-}
-
-impl<T, const D: usize> Index<Point<D>> for Matrix<T, D> {
-    type Output = <Self as Index<usize>>::Output;
-
-    #[inline(always)]
-    fn index(&self, index: Point<D>) -> &Self::Output {
-        &self[point_to_index(index, &self.dimension_offsets)]
+    pub fn get_mut<I>(&mut self, index: I) -> Option<&mut T>
+    where
+        I: ToIndex<D>,
+    {
+        self.matrix.get_mut(index.to_index(&self.dimension_offsets))
     }
 }
 
 impl<I, T, const D: usize> Index<I> for Matrix<T, D>
 where
-    Vec<T>: Index<I>,
+    I: ToIndex<D>,
 {
-    type Output = <Vec<T> as Index<I>>::Output;
+    type Output = <Vec<T> as Index<usize>>::Output;
 
     #[inline(always)]
     fn index(&self, index: I) -> &Self::Output {
-        &self.matrix[index]
-    }
-}
-
-impl<T, const D: usize> IndexMut<Point<D>> for Matrix<T, D> {
-    #[inline(always)]
-    fn index_mut(&mut self, index: Point<D>) -> &mut Self::Output {
-        let index = point_to_index(index, &self.dimension_offsets);
-        &mut self[index]
+        &self.matrix[index.to_index(&self.dimension_offsets)]
     }
 }
 
 impl<I, T, const D: usize> IndexMut<I> for Matrix<T, D>
 where
-    Vec<T>: IndexMut<I>,
+    I: ToIndex<D>,
+    Vec<T>: IndexMut<usize>,
 {
     #[inline(always)]
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
+        let index = index.to_index(&self.dimension_offsets);
         &mut self.matrix[index]
     }
 }
@@ -161,15 +174,15 @@ mod tests {
     }
 
     #[test]
-    fn point_to_index() {
-        let index = super::point_to_index(Point::from([1, 2]), &[4, 20]);
+    fn to_index() {
+        let index = Point::from([1, 2]).to_index(&[4, 20]);
 
         assert_eq!(index, 9);
     }
 
     #[test]
-    fn index_to_point() {
-        let point = super::index_to_point(9, &[4, 20]);
+    fn to_point() {
+        let point = 9.to_point(&[4, 20]);
 
         assert_eq!(point, Point::from([1, 2]));
     }
@@ -241,7 +254,9 @@ mod tests {
         };
 
         assert_eq!(matrix.get(Point::from([1, 2])), Some(&9));
+        assert_eq!(matrix.get(9), Some(&9));
         assert_eq!(matrix.get(Point::from([4, 5])), None);
+        assert_eq!(matrix.get(20), None);
     }
 
     #[test]
@@ -253,7 +268,9 @@ mod tests {
         };
 
         assert_eq!(matrix.get_mut(Point::from([1, 2])), Some(&mut 9));
+        assert_eq!(matrix.get_mut(9), Some(&mut 9));
         assert_eq!(matrix.get_mut(Point::from([4, 5])), None);
+        assert_eq!(matrix.get_mut(20), None);
     }
 
     #[test]
