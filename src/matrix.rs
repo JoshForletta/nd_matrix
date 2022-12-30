@@ -1,6 +1,8 @@
 use std::{
     iter::{repeat, repeat_with, zip},
     ops::{Index, IndexMut},
+    slice::{Iter, IterMut},
+    vec::IntoIter,
 };
 
 use crate::Point;
@@ -159,6 +161,33 @@ where
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
         let index = index.to_index(&self.dimension_offsets);
         &mut self.matrix[index]
+    }
+}
+
+impl<'a, T, const D: usize> IntoIterator for Matrix<T, D> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.matrix.into_iter()
+    }
+}
+
+impl<'a, T, const D: usize> IntoIterator for &'a Matrix<T, D> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.matrix).into_iter()
+    }
+}
+
+impl<'a, T, const D: usize> IntoIterator for &'a mut Matrix<T, D> {
+    type Item = &'a mut T;
+    type IntoIter = IterMut<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&mut self.matrix).into_iter()
     }
 }
 
@@ -363,5 +392,56 @@ mod tests {
         };
 
         (&mut matrix)[Point::from([4, 5])];
+    }
+
+    #[test]
+    fn into_iter() {
+        let matrix = Matrix {
+            dimensions: [2, 2],
+            dimension_offsets: [2, 4],
+            matrix: (0..4).collect(),
+        };
+
+        let mut iter = matrix.into_iter();
+
+        assert_eq!(iter.next(), Some(0));
+        assert_eq!(iter.next(), Some(1));
+        assert_eq!(iter.next(), Some(2));
+        assert_eq!(iter.next(), Some(3));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn into_iter_ref() {
+        let matrix = Matrix {
+            dimensions: [2, 2],
+            dimension_offsets: [2, 4],
+            matrix: (0..4).collect(),
+        };
+
+        let mut iter = (&matrix).into_iter();
+
+        assert_eq!(iter.next(), Some(&0));
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), Some(&3));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn into_iter_mut_ref() {
+        let mut matrix = Matrix {
+            dimensions: [2, 2],
+            dimension_offsets: [2, 4],
+            matrix: (0..4).collect(),
+        };
+
+        let mut iter = (&mut matrix).into_iter();
+
+        assert_eq!(iter.next(), Some(&mut 0));
+        assert_eq!(iter.next(), Some(&mut 1));
+        assert_eq!(iter.next(), Some(&mut 2));
+        assert_eq!(iter.next(), Some(&mut 3));
+        assert_eq!(iter.next(), None);
     }
 }
