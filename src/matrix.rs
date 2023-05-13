@@ -1,11 +1,12 @@
 use std::{
-    iter::{repeat, repeat_with, zip},
+    array::from_fn,
+    iter::{once, repeat, repeat_with, zip},
     ops::{Index, IndexMut},
     slice::{Iter, IterMut},
     vec::IntoIter,
 };
 
-use crate::Point;
+use crate::{AxisPair, Point};
 
 pub fn dimension_offsets<const D: usize>(dimensions: &[usize; D]) -> [usize; D] {
     let mut dimension_offsets = [0; D];
@@ -142,6 +143,56 @@ impl<T, const D: usize> Matrix<T, D> {
         I: ToIndex<D>,
     {
         self.matrix.get_mut(index.to_index(&self.dimension_offsets))
+    }
+
+    pub fn get_adjacent_indexes<I>(&self, index: I) -> [AxisPair<Option<usize>>; D]
+    where
+        I: ToIndex<D>,
+    {
+        let index = index.to_index(&self.dimension_offsets);
+
+        let mut adjacent_indexes: [AxisPair<Option<usize>>; D] = [Default::default(); D];
+        let coordinate_offsets: Vec<_> = once(&1).chain(self.dimension_offsets.iter()).collect();
+
+        for dimension in 0..D {
+            let corrdinate_offset = *coordinate_offsets[dimension];
+
+            let dimension_offset = self.dimension_offsets[dimension];
+            let higher_dimension_index = index / dimension_offset;
+            let lower_bound = higher_dimension_index * dimension_offset;
+            let upper_bound = (higher_dimension_index + 1) * dimension_offset;
+
+            adjacent_indexes[dimension].pos = index
+                .checked_add(corrdinate_offset)
+                .filter(|index| index < &upper_bound);
+
+            adjacent_indexes[dimension].neg = index
+                .checked_sub(corrdinate_offset)
+                .filter(|index| index >= &lower_bound);
+        }
+
+        adjacent_indexes
+    }
+
+    pub fn get_adjacencies<I>(&self, index: I) -> [AxisPair<Option<&T>>; D]
+    where
+        I: ToIndex<D>,
+    {
+        let adjacent_index_pairs = self.get_adjacent_indexes(index);
+
+        let mut adjacencies: [AxisPair<Option<&T>>; D] = from_fn(|_| AxisPair::default());
+
+        for dimension in 0..D {
+            if let Some(adjacent_index) = adjacent_index_pairs[dimension].pos {
+                adjacencies[dimension].pos = Some(&self.matrix[adjacent_index]);
+            }
+
+            if let Some(adjacent_index) = adjacent_index_pairs[dimension].neg {
+                adjacencies[dimension].neg = Some(&self.matrix[adjacent_index]);
+            }
+        }
+
+        adjacencies
     }
 }
 
@@ -448,5 +499,63 @@ mod tests {
         assert_eq!(iter.next(), Some(&mut 2));
         assert_eq!(iter.next(), Some(&mut 3));
         assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn get_adjacent_indexes() {
+        let matrix = Matrix {
+            dimensions: [2, 2],
+            dimension_offsets: [2, 4],
+            matrix: (1..=4).collect(),
+        };
+
+        assert_eq!(
+            matrix.get_adjacent_indexes(0),
+            [AxisPair::new(Some(1), None), AxisPair::new(Some(2), None)]
+        );
+
+        assert_eq!(
+            matrix.get_adjacent_indexes(1),
+            [AxisPair::new(None, Some(0)), AxisPair::new(Some(3), None)]
+        );
+
+        assert_eq!(
+            matrix.get_adjacent_indexes(2),
+            [AxisPair::new(Some(3), None), AxisPair::new(None, Some(0))]
+        );
+
+        assert_eq!(
+            matrix.get_adjacent_indexes(3),
+            [AxisPair::new(None, Some(2)), AxisPair::new(None, Some(1))]
+        );
+    }
+
+    #[test]
+    fn get_adjacencies() {
+        let matrix = Matrix {
+            dimensions: [2, 2],
+            dimension_offsets: [2, 4],
+            matrix: (1..=4).collect(),
+        };
+
+        assert_eq!(
+            matrix.get_adjacencies(0),
+            [AxisPair::new(Some(&2), None), AxisPair::new(Some(&3), None)]
+        );
+
+        assert_eq!(
+            matrix.get_adjacencies(1),
+            [AxisPair::new(None, Some(&1)), AxisPair::new(Some(&4), None)]
+        );
+
+        assert_eq!(
+            matrix.get_adjacencies(2),
+            [AxisPair::new(Some(&4), None), AxisPair::new(None, Some(&1))]
+        );
+
+        assert_eq!(
+            matrix.get_adjacencies(3),
+            [AxisPair::new(None, Some(&3)), AxisPair::new(None, Some(&2))]
+        );
     }
 }
