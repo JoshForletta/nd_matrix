@@ -114,6 +114,11 @@ impl<T, const D: usize> Matrix<T, D> {
     }
 
     #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.matrix.len()
+    }
+
+    #[inline(always)]
     pub fn matrix(&self) -> &Vec<T> {
         &self.matrix
     }
