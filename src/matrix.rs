@@ -104,6 +104,18 @@ impl<T, const D: usize> Matrix<T, D> {
         }
     }
 
+    pub fn from_with_dimensions<const N: usize>(dimensions: [usize; D], cells: [T; N]) -> Self {
+        let capacity = dimensions.iter().product();
+
+        assert_eq!(N, capacity);
+
+        Self {
+            dimensions,
+            dimension_offsets: dimension_offsets(&dimensions),
+            matrix: Vec::from(cells),
+        }
+    }
+
     #[inline(always)]
     pub fn dimensions(&self) -> &[usize; D] {
         &self.dimensions
