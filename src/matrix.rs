@@ -71,7 +71,7 @@ impl<const D: usize> ToPoint<D> for usize {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Matrix<T, const D: usize> {
     dimensions: [usize; D],
     dimension_offsets: [usize; D],
