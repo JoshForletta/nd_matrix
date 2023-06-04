@@ -1,5 +1,4 @@
 use std::{
-    array::from_fn,
     iter::{once, repeat, repeat_with, zip},
     ops::{Index, IndexMut},
     slice::{Iter, IterMut},
@@ -15,6 +14,21 @@ pub fn dimension_offsets<const D: usize>(dimensions: &[usize; D]) -> [usize; D] 
     for (dimension_offset, dimension_size) in
         zip((&mut dimension_offsets).into_iter(), dimensions.into_iter())
     {
+        cumulative_product = cumulative_product * dimension_size;
+        *dimension_offset = cumulative_product;
+    }
+
+    dimension_offsets
+}
+
+pub fn coordinate_offsets<const D: usize>(dimensions: &[usize; D]) -> [usize; D] {
+    let mut dimension_offsets = [0; D];
+    let mut cumulative_product = 1;
+
+    for (dimension_offset, dimension_size) in zip(
+        (&mut dimension_offsets).into_iter(),
+        once(&1).chain(dimensions.into_iter()),
+    ) {
         cumulative_product = cumulative_product * dimension_size;
         *dimension_offset = cumulative_product;
     }
@@ -75,6 +89,7 @@ impl<const D: usize> ToPoint<D> for usize {
 pub struct Matrix<T, const D: usize> {
     dimensions: [usize; D],
     dimension_offsets: [usize; D],
+    coordinate_offsets: [usize; D],
     matrix: Vec<T>,
 }
 
@@ -88,6 +103,7 @@ where
         Self {
             dimensions,
             dimension_offsets: dimension_offsets(&dimensions),
+            coordinate_offsets: coordinate_offsets(&dimensions),
             matrix: repeat(cell).take(capacity).collect(),
         }
     }
@@ -100,6 +116,7 @@ impl<T, const D: usize> Matrix<T, D> {
         Self {
             dimensions,
             dimension_offsets: dimension_offsets(&dimensions),
+            coordinate_offsets: coordinate_offsets(&dimensions),
             matrix: repeat_with(cell).take(capacity).collect(),
         }
     }
@@ -112,6 +129,7 @@ impl<T, const D: usize> Matrix<T, D> {
         Self {
             dimensions,
             dimension_offsets: dimension_offsets(&dimensions),
+            coordinate_offsets: coordinate_offsets(&dimensions),
             matrix: Vec::from(cells),
         }
     }
@@ -163,24 +181,23 @@ impl<T, const D: usize> Matrix<T, D> {
     {
         let index = index.to_index(&self.dimension_offsets);
 
-        let mut adjacent_indexes: [AxisPair<Option<usize>>; D] = [Default::default(); D];
-        let coordinate_offsets: Vec<_> = once(&1).chain(self.dimension_offsets.iter()).collect();
+        let mut adjacent_indexes = [<AxisPair<Option<usize>> as Default>::default(); D];
 
         for dimension in 0..D {
-            let corrdinate_offset = *coordinate_offsets[dimension];
-
             let dimension_offset = self.dimension_offsets[dimension];
+
             let higher_dimension_index = index / dimension_offset;
+
             let lower_bound = higher_dimension_index * dimension_offset;
             let upper_bound = (higher_dimension_index + 1) * dimension_offset;
 
             adjacent_indexes[dimension].pos = index
-                .checked_add(corrdinate_offset)
-                .filter(|index| index < &upper_bound);
+                .checked_add(self.coordinate_offsets[dimension])
+                .filter(|index| *index < upper_bound);
 
             adjacent_indexes[dimension].neg = index
-                .checked_sub(corrdinate_offset)
-                .filter(|index| index >= &lower_bound);
+                .checked_sub(self.coordinate_offsets[dimension])
+                .filter(|index| *index >= lower_bound);
         }
 
         adjacent_indexes
@@ -192,7 +209,7 @@ impl<T, const D: usize> Matrix<T, D> {
     {
         let adjacent_index_pairs = self.get_adjacent_indexes(index);
 
-        let mut adjacencies: [AxisPair<Option<&T>>; D] = from_fn(|_| AxisPair::default());
+        let mut adjacencies = [<AxisPair<Option<&T>> as Default>::default(); D];
 
         for dimension in 0..D {
             if let Some(adjacent_index) = adjacent_index_pairs[dimension].pos {
@@ -271,6 +288,13 @@ mod tests {
     }
 
     #[test]
+    fn coordinate_offsets() {
+        let coordinate_offsets = super::coordinate_offsets(&[4, 5]);
+
+        assert_eq!(coordinate_offsets, [1, 4]);
+    }
+
+    #[test]
     fn to_index() {
         let index = Point::from([1, 2]).to_index(&[4, 20]);
 
@@ -303,6 +327,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: Vec::from([0; 20]),
         };
 
@@ -314,6 +339,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: Vec::from([0; 20]),
         };
 
@@ -325,6 +351,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: Vec::from([0; 20]),
         };
 
@@ -336,6 +363,7 @@ mod tests {
         let mut matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: Vec::from([0; 20]),
         };
 
@@ -347,6 +375,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -361,6 +390,7 @@ mod tests {
         let mut matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -375,6 +405,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -387,6 +418,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -398,6 +430,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -410,6 +443,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -421,6 +455,7 @@ mod tests {
         let mut matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -433,6 +468,7 @@ mod tests {
         let mut matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -444,6 +480,7 @@ mod tests {
         let mut matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -456,6 +493,7 @@ mod tests {
         let mut matrix = Matrix {
             dimensions: [4, 5],
             dimension_offsets: [4, 20],
+            coordinate_offsets: [1, 4],
             matrix: (0..20).collect(),
         };
 
@@ -467,6 +505,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [2, 2],
             dimension_offsets: [2, 4],
+            coordinate_offsets: [1, 2],
             matrix: (0..4).collect(),
         };
 
@@ -484,6 +523,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [2, 2],
             dimension_offsets: [2, 4],
+            coordinate_offsets: [1, 2],
             matrix: (0..4).collect(),
         };
 
@@ -501,6 +541,7 @@ mod tests {
         let mut matrix = Matrix {
             dimensions: [2, 2],
             dimension_offsets: [2, 4],
+            coordinate_offsets: [1, 2],
             matrix: (0..4).collect(),
         };
 
@@ -518,6 +559,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [2, 2],
             dimension_offsets: [2, 4],
+            coordinate_offsets: [1, 2],
             matrix: (1..=4).collect(),
         };
 
@@ -547,6 +589,7 @@ mod tests {
         let matrix = Matrix {
             dimensions: [2, 2],
             dimension_offsets: [2, 4],
+            coordinate_offsets: [1, 2],
             matrix: (1..=4).collect(),
         };
 
